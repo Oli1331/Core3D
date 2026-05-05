@@ -10,7 +10,6 @@
 #define MAX_LEN_FILENAME 48
 
 
-
 typedef struct Vertice_s {
     float x, y, z, w;
 }Vertice;
@@ -161,6 +160,93 @@ void apply_transform(float transform[16], float v[4], float res[4]) {
     }
 }
 
+// parsing 
+void parsing_obj_file(char* namefile, Vector_mdl* models, Vector_obj* objects) {
+    FILE* in = fopen(namefile, "r");
+    char line[50];
+    int trash;
+    int cnt_vertices_in_before_model = 0;
+    Model m = { 0 };
+    Vertice v;v.w = 1;
+    Polygon p;
+    while (fgets(line, MSX_LEN_LINE_IN_OBJ, in)) {
+        switch (line[0]) {
+        case 'o':
+            if (m.vertices.cnt_vertices > 0)vector_mdl_push(models, &m);
+            cnt_vertices_in_before_model += m.vertices.cnt_vertices;
+            init_mdl(&m);
+            memcpy(m.name, line + 2, SIZE_NAME_MODEL);m.name[SIZE_NAME_MODEL - 1] = '\0';
+            char* end_name = strchr(m.name, '\n');
+            if (end_name)*end_name = '\0';
+            break;
+        case 'v':
+            switch (line[1]) {
+            case ' ':
+                sscanf(line, "v %f %f %f", &(v.x), &(v.y), &(v.z));
+                v.z *= -1;
+                vector_vrtc_push(&(m.vertices), &v);
+                break;
+
+            default:
+                break;
+            }
+            break;
+        case 'f':
+            sscanf(line, "f %d/%d/%d %d/%d/%d %d/%d/%d", &(p.v[0]), &trash, &trash, &(p.v[1]), &trash, &trash, &(p.v[2]), &trash, &trash);
+            p.v[0] -= cnt_vertices_in_before_model + 1;
+            p.v[1] -= cnt_vertices_in_before_model + 1;
+            p.v[2] -= cnt_vertices_in_before_model + 1;
+            vector_plgn_push(&(m.polygons), &p);
+            break;
+        default:
+            break;
+        }
+    }
+    if (m.vertices.cnt_vertices > 0)vector_mdl_push(models, &m);
+
+    Object o = { 0 };
+    for (int i = 0; i < 4; i++) {
+        o.transforms[i * 4 + i] = 1;
+    }
+
+    for (int m = 0; m < models->cnt_models; m++) {
+        o.model = &(models->data[m]);
+        vector_obj_push(objects, &o);
+    }
+    fclose(in);
+}
+
+void save_output_file(int argc_main, char** argv_main, Vector_obj* objects, Vector_vrtc* global_render_buffer) {
+    char filename_output[MAX_LEN_FILENAME] = "a.obj";
+    if (argc_main > 2 && strlen(argv_main[2]) < MAX_LEN_FILENAME) {
+        strncpy(filename_output, argv_main[2], MAX_LEN_FILENAME);filename_output[MAX_LEN_FILENAME - 1] = '\0';
+    }
+    FILE* out = fopen(filename_output, "w");
+    fprintf(out, "# Core3D 1.0.0\n");
+    int cnt_vertices_in_before_model = 0;
+
+    for (int o = 0; o < objects->cnt_object; o++) {
+        Model* mdl = objects->data[o].model;
+        int trash = -1;
+        provide_vector_vrtc(global_render_buffer, mdl->vertices.cnt_vertices);
+
+        for (int v = 0; v < mdl->vertices.cnt_vertices; v++) {
+            apply_transform(objects->data[o].transforms, (float*)&(mdl->vertices.data[v]), (float*)&(global_render_buffer->data[v]));
+        }
+        fprintf(out, "\no %s\n", mdl->name);
+        for (int v = 0; v < mdl->vertices.cnt_vertices; v++) {
+            fprintf(out, "v %f %f %f\n", mdl->vertices.data[v].x, mdl->vertices.data[v].y, mdl->vertices.data[v].z);
+        }
+        for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
+            fprintf(out, "f %d/%d/%d %d/%d/%d %d/%d/%d\n", mdl->polygons.data[p].v[0] + 1 + cnt_vertices_in_before_model, trash, trash,
+                mdl->polygons.data[p].v[1] + 1 + cnt_vertices_in_before_model, trash, trash,
+                mdl->polygons.data[p].v[2] + 1 + cnt_vertices_in_before_model, trash, trash);
+        }
+        cnt_vertices_in_before_model += mdl->vertices.cnt_vertices;
+    }
+    fclose(out);
+}
+
 
 int main(int argc, char* argv[]) {
     // Инициализация видео-подсистемы
@@ -184,76 +270,24 @@ int main(int argc, char* argv[]) {
     Vector_obj objects; init_vector_obj(&objects);
     Vector_vrtc global_render_buffer; init_vector_vrtc(&global_render_buffer);
 
-    if (argc > 1) { // parsing 
-        freopen(argv[1], "r", stdin);
-        char line[50];
-        int trash;
-        int cnt_vertices_in_before_model = 0;
-        Model m = { 0 };
-        Vertice v;v.w = 1;
-        Polygon p;
-        while (fgets(line, MSX_LEN_LINE_IN_OBJ, stdin)) {
-            switch (line[0]) {
-            case 'o':
-                if (m.vertices.cnt_vertices > 0)vector_mdl_push(&models, &m);
-                cnt_vertices_in_before_model += m.vertices.cnt_vertices;
-                init_mdl(&m);
-                memcpy(m.name, line + 2, SIZE_NAME_MODEL);m.name[SIZE_NAME_MODEL - 1] = '\0';
-                char* end_name = strchr(m.name, '\n');
-                if (end_name)*end_name = '\0';
-                break;
-            case 'v':
-                switch (line[1]) {
-                case ' ':
-                    sscanf(line, "v %f %f %f", &(v.x), &(v.y), &(v.z));
-                    v.z *= -1;
-                    vector_vrtc_push(&(m.vertices), &v);
-                    break;
-
-                default:
-                    break;
-                }
-                break;
-            case 'f':
-                sscanf(line, "f %d/%d/%d %d/%d/%d %d/%d/%d", &(p.v[0]), &trash, &trash, &(p.v[1]), &trash, &trash, &(p.v[2]), &trash, &trash);
-                p.v[0] -= cnt_vertices_in_before_model + 1;
-                p.v[1] -= cnt_vertices_in_before_model + 1;
-                p.v[2] -= cnt_vertices_in_before_model + 1;
-                vector_plgn_push(&(m.polygons), &p);
-                break;
-            default:
-                break;
-            }
-        }
-        if (m.vertices.cnt_vertices > 0)vector_mdl_push(&models, &m);
-
-        Object o = { 0 };
-        for (int i = 0; i < 4; i++) {
-            o.transforms[i * 4 + i] = 1;
-        }
-
-        for (int m = 0; m < models.cnt_models; m++) {
-            o.model = &(models.data[m]);
-            vector_obj_push(&objects, &o);
-        }
-    }
+    if (argc > 1) parsing_obj_file(argv[1], &models, &objects);
 
 
     while (is_running) {
-        // [A] Обработка событий (ввод пользователя)
+        // Обработка событий
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
                 is_running = false;
             }
         }
 
-        // [B] Логика (тут будет твоя математика вращения матриц)
+        // Логика
 
-        // [C] Отрисовка
-        // 1. Устанавливаем цвет фона (черный: 0, 0, 0, 255)
+        // Отрисовка
+        // Установка цвета фона
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
-        // 2. Рисуем модель 
+        // отрисовка модели
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // Белый
         for (int o = 0; o < objects.cnt_object; o++) {
             Model* mdl = objects.data[o].model;
@@ -289,52 +323,23 @@ int main(int argc, char* argv[]) {
             }
 
         }
-        //SDL_RenderDrawLine(renderer, 55, 55, SCREEN_WIDTH-55, 55);    // (x1, y1, x2, y2)
-        // 3. Выводим то, что нарисовали, на экран
+        // Вывод на экран
         SDL_RenderPresent(renderer);
 
-        // Небольшая задержка, чтобы не нагружать процессор на 100%
-        SDL_Delay(16); // Примерно 60 FPS
+        // задержка
+        SDL_Delay(16);
     }
 
-    // 4. Очистка ресурсов
+    // Сохранение файла
+    save_output_file(argc, argv, &objects, &global_render_buffer);
+
+    // Очистка ресурсов
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-
-    char filename_output[MAX_LEN_FILENAME] = "a.obj";
-    if (argc > 2 && strlen(argv[2]) < MAX_LEN_FILENAME) {
-        strncpy(filename_output, argv[2], MAX_LEN_FILENAME);filename_output[MAX_LEN_FILENAME - 1] = '\0';
-    }
-    FILE* out = fopen(filename_output, "w");
-    fprintf(out, "# Core3D 1.0.0\n");
-    int cnt_vertices_in_before_model = 0;
-
-    for (int o = 0; o < objects.cnt_object; o++) {
-        Model* mdl = objects.data[o].model;
-        int trash = -1;
-        provide_vector_vrtc(&global_render_buffer, mdl->vertices.cnt_vertices);
-
-        for (int v = 0; v < mdl->vertices.cnt_vertices; v++) {
-            apply_transform(objects.data[o].transforms, (float*)&(mdl->vertices.data[v]), (float*)&(global_render_buffer.data[v]));
-        }
-        fprintf(out, "\no %s\n", mdl->name);
-        for (int v = 0; v < mdl->vertices.cnt_vertices; v++) {
-            fprintf(out, "v %f %f %f\n", mdl->vertices.data[v].x, mdl->vertices.data[v].y, mdl->vertices.data[v].z);
-        }
-        for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
-            fprintf(out, "f %d/%d/%d %d/%d/%d %d/%d/%d\n", mdl->polygons.data[p].v[0] + 1 + cnt_vertices_in_before_model, trash, trash,
-                mdl->polygons.data[p].v[1] + 1 + cnt_vertices_in_before_model, trash, trash,
-                mdl->polygons.data[p].v[2] + 1 + cnt_vertices_in_before_model, trash, trash);
-        }
-        cnt_vertices_in_before_model += mdl->vertices.cnt_vertices;
-
-    }
-    fclose(out);
     free_vector_vrtc(&global_render_buffer);
     free_vector_mdl(&models);
     free_vector_obj(&objects);
-
 
     return 0;
 }
