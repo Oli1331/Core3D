@@ -4,7 +4,6 @@
 #include <math.h>
 #define SCREEN_WIDTH (1920*0.75)
 #define SCREEN_HEIGHT (1200*0.75)
-#define FOV 60
 #define SIZE_NAME_MODEL 16
 #define MSX_LEN_LINE_IN_OBJ 50
 #define MAX_LEN_FILENAME 48
@@ -161,14 +160,16 @@ void apply_transform(float transform[16], float v[4], float res[4]) {
 }
 
 // parsing 
-void parsing_obj_file(char* namefile, Vector_mdl* models, Vector_obj* objects) {
+int parsing_obj_file(char* namefile, Vector_mdl* models, Vector_obj* objects) {
     FILE* in = fopen(namefile, "r");
+    if (in == NULL)return 0;
     char line[50];
     int trash;
     int cnt_vertices_in_before_model = 0;
     Model m = { 0 };
     Vertice v;v.w = 1;
     Polygon p;
+    fprintf(stderr, "START PARSING\n");
     while (fgets(line, MSX_LEN_LINE_IN_OBJ, in)) {
         switch (line[0]) {
         case 'o':
@@ -214,6 +215,7 @@ void parsing_obj_file(char* namefile, Vector_mdl* models, Vector_obj* objects) {
         vector_obj_push(objects, &o);
     }
     fclose(in);
+    return 1;
 }
 
 void save_output_file(int argc_main, char** argv_main, Vector_obj* objects, Vector_vrtc* global_render_buffer) {
@@ -247,6 +249,44 @@ void save_output_file(int argc_main, char** argv_main, Vector_obj* objects, Vect
     fclose(out);
 }
 
+void multiply_matrix_4x4(float A[16], float B[16], float out[16]) {
+    for (int r = 0; r < 4; r++) {           // Строки (row)
+        for (int c = 0; c < 4; c++) {       // Столбцы (col)
+            out[r * 4 + c] = 0;
+            for (int k = 0; k < 4; k++) {   // Элементы
+                out[r * 4 + c] += A[r * 4 + k] * B[k * 4 + c];
+            }
+        }
+    }
+}
+
+void build_mvp_matrix(float model[16], float view[16], float proj[16], float mvp[16]) {
+    float temp_view_model[16];
+    multiply_matrix_4x4(view, model, temp_view_model); //  View * Model
+    multiply_matrix_4x4(proj, temp_view_model, mvp);   //  Proj * (View * Model)
+}
+
+void build_view_matrix(float view_matrix[16], float displacement_x, float displacement_y, float displacement_z) {
+    for (int i = 0; i < 16; i++) view_matrix[i] = 0.0f;
+    view_matrix[0] = 1.0f;
+    view_matrix[5] = 1.0f;
+    view_matrix[10] = 1.0f;
+    view_matrix[15] = 1.0f;
+    view_matrix[0 * 4 + 3] = displacement_x;
+    view_matrix[1 * 4 + 3] = displacement_y;
+    view_matrix[2 * 4 + 3] = displacement_z;
+}
+
+void build_projection_matrix(float FOV, float ratio_screen, float z_near, float z_far, float proj_matrix[16]) {
+    for (int i = 0; i < 16; i++) proj_matrix[i] = 0.0f;
+
+    float s = 1.0f / tanf(FOV / 2.0f);
+    proj_matrix[0] = s / ratio_screen;
+    proj_matrix[5] = s;
+    proj_matrix[10] = z_far / (z_far - z_near);
+    proj_matrix[11] = -(z_near * z_far) / (z_far - z_near);
+    proj_matrix[14] = 1.0f;
+}
 
 int main(int argc, char* argv[]) {
     // Инициализация видео-подсистемы
@@ -264,15 +304,26 @@ int main(int argc, char* argv[]) {
 
     bool is_running = true;
     SDL_Event event;
-    float coef_FOV = 1 / tanf(FOV / 2);
-    float coef_screen = (float)SCREEN_HEIGHT / SCREEN_WIDTH;
     Vector_mdl models;  init_vector_mdl(&models);
     Vector_obj objects; init_vector_obj(&objects);
     Vector_vrtc global_render_buffer; init_vector_vrtc(&global_render_buffer);
+    float view_matrix[16] = { 0 }; for (int i = 0; i < 4; i++) view_matrix[i * 4 + i] = 1;
+    float projection_matrix[16] = { 0 };
+    float mvp_matrix[16] = { 0 };
+    float FOV = 70;
+    float z_near = 0.01, z_far = 10000;
 
-    if (argc > 1) parsing_obj_file(argv[1], &models, &objects);
+    float camera_x = 0;
+    float camera_y = 0;
+    float camera_z = 0;
+    float camera_speed = 0.01;
 
-
+    if (argc > 1) {
+        if (parsing_obj_file(argv[1], &models, &objects) == 0) {
+            fprintf(stderr, "FILE not found\n");
+        }
+    }
+    fprintf(stderr, "START MAIN LOOP\n");
     while (is_running) {
         // Обработка событий
         while (SDL_PollEvent(&event)) {
@@ -280,7 +331,31 @@ int main(int argc, char* argv[]) {
                 is_running = false;
             }
         }
+        const Uint8* state = SDL_GetKeyboardState(NULL);
 
+        // Движение вперед/назад (по оси Z)
+        if (state[SDL_SCANCODE_UP]) {
+            camera_z -= camera_speed;
+        }
+        if (state[SDL_SCANCODE_DOWN]) {
+            camera_z += camera_speed;
+        }
+
+        // Движение влево/вправо (по оси X)
+        if (state[SDL_SCANCODE_LEFT]) {
+            camera_x += camera_speed;
+        }
+        if (state[SDL_SCANCODE_RIGHT]) {
+            camera_x -= camera_speed;
+        }
+
+        // Движение вверх/вниз (по оси Y)
+        if (state[SDL_SCANCODE_W]) {
+            camera_y -= camera_speed;
+        }
+        if (state[SDL_SCANCODE_S]) {
+            camera_y += camera_speed;
+        }
         // Логика
 
         // Отрисовка
@@ -289,37 +364,38 @@ int main(int argc, char* argv[]) {
         SDL_RenderClear(renderer);
         // отрисовка модели
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // Белый
+
+        build_projection_matrix(FOV, (float)SCREEN_WIDTH / SCREEN_HEIGHT, z_near, z_far, projection_matrix);
+        build_view_matrix(view_matrix, camera_x, camera_y, camera_z);
         for (int o = 0; o < objects.cnt_object; o++) {
             Model* mdl = objects.data[o].model;
+            build_mvp_matrix(objects.data[o].transforms, view_matrix, projection_matrix, mvp_matrix);
             provide_vector_vrtc(&global_render_buffer, mdl->vertices.cnt_vertices);
 
             for (int v = 0; v < mdl->vertices.cnt_vertices; v++) {
-                apply_transform(objects.data[o].transforms, (float*)&(mdl->vertices.data[v]), (float*)&(global_render_buffer.data[v]));
+                apply_transform(mvp_matrix, (float*)&(mdl->vertices.data[v]), (float*)&(global_render_buffer.data[v]));
             }
-
 
             for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
 
                 int* v = mdl->polygons.data[p].v;
-                float z1 = global_render_buffer.data[v[0]].z;
-                float z2 = global_render_buffer.data[v[1]].z;
-                float z3 = global_render_buffer.data[v[2]].z;
+                float w1 = global_render_buffer.data[v[0]].w;
+                float w2 = global_render_buffer.data[v[1]].w;
+                float w3 = global_render_buffer.data[v[2]].w;
 
-                if (z1 <= 0.01 || z2 <= 0.01 || z3 <= 0.01)continue;//clipping
+                if (w1 < z_near || w2 < z_near || w3 < z_near || w1 > z_far || w2 > z_far || w3 > z_far)continue;//clipping
 
-                int x1 = (global_render_buffer.data[v[0]].x / z1) * coef_screen * coef_FOV * (SCREEN_WIDTH / 2) + SCREEN_WIDTH / 2;
-                int x2 = (global_render_buffer.data[v[1]].x / z2) * coef_screen * coef_FOV * (SCREEN_WIDTH / 2) + SCREEN_WIDTH / 2;
-                int x3 = (global_render_buffer.data[v[2]].x / z3) * coef_screen * coef_FOV * (SCREEN_WIDTH / 2) + SCREEN_WIDTH / 2;
+                int x1 = (global_render_buffer.data[v[0]].x / w1 + 1) * 0.5 * SCREEN_WIDTH;
+                int x2 = (global_render_buffer.data[v[1]].x / w2 + 1) * 0.5 * SCREEN_WIDTH;
+                int x3 = (global_render_buffer.data[v[2]].x / w3 + 1) * 0.5 * SCREEN_WIDTH;
 
-                int y1 = (global_render_buffer.data[v[0]].y / z1) * coef_FOV * (SCREEN_HEIGHT / 2) + SCREEN_HEIGHT / 2;
-                int y2 = (global_render_buffer.data[v[1]].y / z2) * coef_FOV * (SCREEN_HEIGHT / 2) + SCREEN_HEIGHT / 2;
-                int y3 = (global_render_buffer.data[v[2]].y / z3) * coef_FOV * (SCREEN_HEIGHT / 2) + SCREEN_HEIGHT / 2;
-
+                int y1 = (1 - global_render_buffer.data[v[0]].y / w1) * 0.5 * SCREEN_HEIGHT;
+                int y2 = (1 - global_render_buffer.data[v[1]].y / w2) * 0.5 * SCREEN_HEIGHT;
+                int y3 = (1 - global_render_buffer.data[v[2]].y / w3) * 0.5 * SCREEN_HEIGHT;
 
                 SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
                 SDL_RenderDrawLine(renderer, x2, y2, x3, y3);
                 SDL_RenderDrawLine(renderer, x3, y3, x1, y1);
-
             }
 
         }
