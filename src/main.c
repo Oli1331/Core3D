@@ -89,11 +89,13 @@ typedef struct Scene_data_s {
     float view_matrix[16];
     float projection_matrix[16];
     float mvp_matrix[16];
+    float mv_matrix[16];
 
     float FOV;
     float z_near, z_far;
 
     Vec light;
+    float ambient_light;
 
     Vec camera;
     float camera_speed;
@@ -337,7 +339,7 @@ float edge_function(float x1, float y1, float x2, float y2, float x3, float y3) 
     return (x2 - x1) * (y3 - y1) - (x3 - x1) * (y2 - y1);
 }
 
-void draw_triangle(float inverse, float* z_bufer, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3) {
+void draw_triangle(float* z_bufer, Uint32* pixels, float light_intesity, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3) {
     int min_x = fmaxf(0, fminf(x1, fminf(x2, x3)));
     int min_y = fmaxf(0, fminf(y1, fminf(y2, y3)));
     int max_x = fminf(SCREEN_WIDTH - 1, fmaxf(x1, fmaxf(x2, x3)));
@@ -353,7 +355,40 @@ void draw_triangle(float inverse, float* z_bufer, float x1, float y1, float z1, 
             float w2 = edge_function(x3, y3, x1, y1, x, y);
             float w3 = edge_function(x1, y1, x2, y2, x, y);
 
-            if ((inverse==0 && w1 < 0 && w2 < 0 && w3 < 0) || ((inverse  && w1 > 0 && w2 > 0 && w3 > 0))) {
+            if (w1 < 0 && w2 < 0 && w3 < 0) {
+
+                w1 /= area; w2 /= area; w3 /= area;
+
+                float pixel_z = (z1 * w1) + (z2 * w2) + (z3 * w3);
+                float color = 200 * light_intesity;
+                int bufer_index = y * SCREEN_WIDTH + x;
+
+                if (pixel_z < z_bufer[bufer_index]) {
+                    z_bufer[bufer_index] = pixel_z;
+                    pixels[bufer_index] = RGBA((int)color, (int)color, (int)color, 0);
+                }
+            }
+        }
+    }
+}
+
+void draw_const_triangle(float* z_bufer, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3) {
+    int min_x = fmaxf(0, fminf(x1, fminf(x2, x3)));
+    int min_y = fmaxf(0, fminf(y1, fminf(y2, y3)));
+    int max_x = fminf(SCREEN_WIDTH - 1, fmaxf(x1, fmaxf(x2, x3)));
+    int max_y = fminf(SCREEN_HEIGHT - 1, fmaxf(y1, fmaxf(y2, y3)));
+
+    float area = edge_function(x1, y1, x2, y2, x3, y3);
+    if (area == 0.0f) return;
+
+    for (int y = min_y; y <= max_y; y++) {
+        for (int x = min_x; x <= max_x; x++) {
+
+            float w1 = edge_function(x2, y2, x3, y3, x, y);
+            float w2 = edge_function(x3, y3, x1, y1, x, y);
+            float w3 = edge_function(x1, y1, x2, y2, x, y);
+
+            if (w1 < 0 && w2 < 0 && w3 < 0) {
 
                 w1 /= area; w2 /= area; w3 /= area;
 
@@ -420,7 +455,8 @@ void start_scene(Scene_data* data) {
 
     data->light.x = 0;
     data->light.y = 0;
-    data->light.z = 0;
+    data->light.z = 1;
+    data->ambient_light = 0.1;
 
     data->reverse_normal = 0;
 }
@@ -465,7 +501,9 @@ void wireframe(SDL_data* sdl, Scene_data* scene) {
     SDL_SetRenderDrawColor(sdl->renderer, 255, 255, 255, 255); // цвет линий
     for (int o = 0; o < scene->objects.cnt_object; o++) {
         Model* mdl = scene->objects.data[o].model;
-        build_mvp_matrix(scene->objects.data[o].transforms, scene->view_matrix, scene->projection_matrix, scene->mvp_matrix);
+
+        multiply_matrix_4x4(scene->view_matrix, scene->objects.data[o].transforms, scene->mv_matrix); //  View * Model
+        multiply_matrix_4x4(scene->projection_matrix, scene->mv_matrix, scene->mvp_matrix);   //  Proj * (View * Model)
 
         provide_vector_vrtc(&(scene->global_render_bufer), mdl->vertices.cnt_vertices);
         for (int v = 0; v < mdl->vertices.cnt_vertices; v++) {
@@ -506,9 +544,14 @@ void wireframe(SDL_data* sdl, Scene_data* scene) {
 }
 
 void solid_without_light(SDL_data* sdl, Scene_data* scene) {
+    for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) scene->z_bufer[i] = BASE_VALUE_Z_BUFER;
+
     for (int o = 0; o < scene->objects.cnt_object; o++) {
         Model* mdl = scene->objects.data[o].model;
-        build_mvp_matrix(scene->objects.data[o].transforms, scene->view_matrix, scene->projection_matrix, scene->mvp_matrix);
+
+        multiply_matrix_4x4(scene->view_matrix, scene->objects.data[o].transforms, scene->mv_matrix); //  View * Model
+        multiply_matrix_4x4(scene->projection_matrix, scene->mv_matrix, scene->mvp_matrix);   //  Proj * (View * Model)
+
 
         provide_vector_vrtc(&(scene->global_render_bufer), mdl->vertices.cnt_vertices);
         for (int v = 0; v < mdl->vertices.cnt_vertices; v++) {
@@ -539,7 +582,7 @@ void solid_without_light(SDL_data* sdl, Scene_data* scene) {
             float z1 = scene->global_render_bufer.data[v[0]].z / w1;
             float z2 = scene->global_render_bufer.data[v[1]].z / w2;
             float z3 = scene->global_render_bufer.data[v[2]].z / w3;
-            draw_triangle(scene->reverse_normal, scene->z_bufer, x1, y1, z1, x2, y2, z2, x3, y3, z3);
+            draw_const_triangle(scene->z_bufer, x1, y1, z1, x2, y2, z2, x3, y3, z3);
 
         }
 
@@ -555,6 +598,104 @@ void solid_without_light(SDL_data* sdl, Scene_data* scene) {
     SDL_RenderPresent(sdl->renderer);
     // задержка
     SDL_Delay(6);
+}
+
+void make_vec(Vertice* a, Vertice* b, Vec* v) {
+    v->x = b->x - a->x;
+    v->y = b->y - a->y;
+    v->z = b->z - a->z;
+}
+
+void cross_product(Vec* a, Vec* b, Vec* n) {
+    n->x = a->y * b->z - a->z * b->y;
+    n->y = a->z * b->x - a->x * b->z;
+    n->z = a->x * b->y - a->y * b->x;
+}
+
+void normalize_vec(Vec* v) {
+    float len = sqrtf(v->x * v->x + v->y * v->y + v->z * v->z);
+    v->x /= len; v->y /= len; v->z /= len;
+}
+
+float dot_product(Vec* a, Vec* b) {
+    return a->x * b->x + a->y * b->y + a->z * b->z;
+}
+
+void solid(SDL_data* sdl, Scene_data* scene) {
+    for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
+        scene->pixels[i] = RGBA(33, 33, 33, 0);
+        scene->z_bufer[i] = BASE_VALUE_Z_BUFER;
+    }
+
+    normalize_vec(&(scene->light));
+    for (int o = 0; o < scene->objects.cnt_object; o++) {
+        Model* mdl = scene->objects.data[o].model;
+
+        multiply_matrix_4x4(scene->view_matrix, scene->objects.data[o].transforms, scene->mv_matrix); //  View * Model
+
+        provide_vector_vrtc(&(scene->global_render_bufer), mdl->vertices.cnt_vertices);
+        Vertice* vertices_mdl = scene->global_render_bufer.data;
+        for (int v = 0; v < mdl->vertices.cnt_vertices; v++) {
+            apply_transform(scene->mv_matrix, (float*)&(mdl->vertices.data[v]), (float*)&(vertices_mdl[v]));
+        }
+
+        for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
+            int* plgs_vertices = mdl->polygons.data[p].v;
+
+            Vec a, b, n;
+            make_vec(&(vertices_mdl[plgs_vertices[0]]), &(vertices_mdl[plgs_vertices[1]]), &a);
+            make_vec(&(vertices_mdl[plgs_vertices[0]]), &(vertices_mdl[plgs_vertices[2]]), &b);
+            cross_product(&a, &b, &n);
+
+            normalize_vec(&n);
+            if (scene->reverse_normal) {
+                n.x *= -1;
+                n.y *= -1;
+                n.z *= -1;
+            }
+
+            float light_intensity = dot_product(&n, &(scene->light));
+            if (light_intensity < 0)light_intensity = 0;
+            light_intensity += scene->ambient_light;
+            if (light_intensity > 1)light_intensity = 1;
+
+            Vertice transform_vertices[3];
+            for (int i = 0; i < 3; i++) {
+                apply_transform(scene->projection_matrix, (float*)&(vertices_mdl[mdl->polygons.data[p].v[i]]), (float*)&(transform_vertices[i]));
+            }
+
+            float w1 = transform_vertices[0].w;
+            float w2 = transform_vertices[1].w;
+            float w3 = transform_vertices[2].w;
+
+            if (w1 < scene->z_near || w2 < scene->z_near || w3 < scene->z_near || w1 > scene->z_far || w2 > scene->z_far || w3 > scene->z_far)continue;//clipping
+
+            float x1 = (transform_vertices[0].x / w1 + 1) * 0.5 * SCREEN_WIDTH;
+            float x2 = (transform_vertices[1].x / w2 + 1) * 0.5 * SCREEN_WIDTH;
+            float x3 = (transform_vertices[2].x / w3 + 1) * 0.5 * SCREEN_WIDTH;
+
+            float y1 = (1 - transform_vertices[0].y / w1) * 0.5 * SCREEN_HEIGHT;
+            float y2 = (1 - transform_vertices[1].y / w2) * 0.5 * SCREEN_HEIGHT;
+            float y3 = (1 - transform_vertices[2].y / w3) * 0.5 * SCREEN_HEIGHT;
+
+            //float normal = edge_function(x1, y1, x2, y2, x3, y3); //векторное произведение ребер грани
+            //if (scene->reverse_normal)normal *= -1;
+            //if (normal > 0)continue;
+
+            float z1 = transform_vertices[0].z / w1;
+            float z2 = transform_vertices[1].z / w2;
+            float z3 = transform_vertices[2].z / w3;
+            draw_triangle(scene->z_bufer, scene->pixels, light_intensity, x1, y1, z1, x2, y2, z2, x3, y3, z3);
+
+        }
+
+    }
+
+    SDL_UpdateTexture(sdl->texture, NULL, scene->pixels, SCREEN_WIDTH * sizeof(Uint32));
+    SDL_RenderCopy(sdl->renderer, sdl->texture, NULL, NULL);
+    SDL_RenderPresent(sdl->renderer);
+    // задержка
+    //SDL_Delay(6);
 }
 
 int main(int argc, char* argv[]) {
@@ -579,7 +720,6 @@ int main(int argc, char* argv[]) {
 
         build_projection_matrix(data_scene.FOV, (float)SCREEN_WIDTH / SCREEN_HEIGHT, data_scene.z_near, data_scene.z_far, data_scene.projection_matrix);
         build_view_matrix(data_scene.view_matrix, data_scene.camera);
-        for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) data_scene.z_bufer[i] = BASE_VALUE_Z_BUFER;
 
         data_scene.objects.data[0].transforms[0 * 4 + 0] = cosf(angle);
         data_scene.objects.data[0].transforms[0 * 4 + 1] = -sinf(angle);
@@ -595,7 +735,7 @@ int main(int argc, char* argv[]) {
             solid_without_light(&data_sdl, &data_scene);
             break;
         case SOLID_MODE:
-            //solid(&data_sdl, &data_scene);
+            solid(&data_sdl, &data_scene);
             break;
         default:
             break;
