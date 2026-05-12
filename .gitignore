@@ -1,5 +1,6 @@
 models
 *.obj
+*.o
 *.mtl
 notes.md
 requirements.md
