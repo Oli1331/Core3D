@@ -1,4 +1,3 @@
-
 #include "elements.h"
 
 void init_mdl(Model* m) { //###
@@ -12,16 +11,6 @@ void free_mdl(Model* m) {
 }
 
 
-void build_view_matrix(Scene_data* scene) {
-    for (int i = 0; i < 16; i++) scene->view_matrix[i] = 0.0f;
-    scene->view_matrix[0] = 1.0f;
-    scene->view_matrix[5] = 1.0f;
-    scene->view_matrix[10] = 1.0f;
-    scene->view_matrix[15] = 1.0f;
-    scene->view_matrix[0 * 4 + 3] = scene->camera_displacement.x;
-    scene->view_matrix[1 * 4 + 3] = scene->camera_displacement.y;
-    scene->view_matrix[2 * 4 + 3] = scene->camera_displacement.z;
-}
 
 void build_projection_matrix(float FOV, float ratio_screen, float z_near, float z_far, float proj_matrix[16]) {
     for (int i = 0; i < 16; i++) proj_matrix[i] = 0.0f;
@@ -72,9 +61,8 @@ void start_scene(Scene_data* data) {
             else data->view_matrix[i * 4 + j] = 0;
         }
     }
-    for (int i = 0; i < 16; i++) {
-        data->projection_matrix[i] = 0;
-    }
+    memset(data->projection_matrix, 0, 16 * sizeof(float));
+    memset(data->shift_of_view, 0, 9 * sizeof(float));
 
     data->FOV = 70;
     data->z_near = 0.01, data->z_far = 10000;
@@ -83,7 +71,10 @@ void start_scene(Scene_data* data) {
     data->camera_displacement.x = 0;
     data->camera_displacement.y = 0;
     data->camera_displacement.z = 0;
-    data->camera_speed = 0.01;
+    data->camera_direction.x = 0;
+    data->camera_direction.y = 0;
+    data->camera_direction.z = 1;
+    data->camera_speed = 0.05;
 
     data->light.x = 0;
     data->light.y = 0;
@@ -91,6 +82,9 @@ void start_scene(Scene_data* data) {
     data->ambient_light = 0.1;
 
     data->reverse_normal = 0;
+
+    data->camera_anglex = 0;
+    data->camera_angley = 0;
 }
 
 void init_vector_vrtc(Vector_vrtc* v) {

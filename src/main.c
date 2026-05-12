@@ -4,9 +4,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <SDL2/SDL.h>
-
 #define RGBA(R,G,B,A) ((R<<24)|(G<<16)|(B<<8)|(A))
-
 
 // parsing 
 int parsing_obj_file(char* namefile, Vector_mdl* models, Vector_obj* objects) {
@@ -61,10 +59,13 @@ int parsing_obj_file(char* namefile, Vector_mdl* models, Vector_obj* objects) {
 
     for (int m = 0; m < models->cnt_models; m++) {
         o.model = &(models->data[m]);
+        
         vector_obj_push(objects, &o);
     }
     fclose(in);
-    return 1;
+    fprintf(stderr, "FINISH PARSING.\nCOUNT of models : % d\n", models->cnt_models);
+
+        return 1;
 }
 
 void save_output_file(int argc_main, char** argv_main, Vector_obj* objects, Vector_vrtc* global_render_bufer) {
@@ -97,7 +98,6 @@ void save_output_file(int argc_main, char** argv_main, Vector_obj* objects, Vect
     }
     fclose(out);
 }
-
 
 void draw_triangle(float* z_bufer, Uint32* pixels, float light_intesity, float x1, float y1, float z1, float x2, float y2, float z2, float x3, float y3, float z3) {
     int min_x = fmaxf(0, fminf(x1, fminf(x2, x3)));
@@ -166,28 +166,56 @@ void draw_const_triangle(float* z_bufer, float x1, float y1, float z1, float x2,
 
 // Обработка событий
 void event_handling(SDL_data* sdl, Scene_data* scene) {
+    const Uint8* state = SDL_GetKeyboardState(NULL);
+
     while (SDL_PollEvent(&(sdl->event))) {
+
+        if (sdl->event.type == SDL_MOUSEMOTION && state[SDL_SCANCODE_SPACE]) {
+            scene->camera_anglex += sdl->event.motion.xrel * 0.01;
+            scene->camera_angley -= sdl->event.motion.yrel * 0.01;
+        }
+
         switch (sdl->event.type) {
         case SDL_QUIT:
             sdl->is_running = 0;
             break;
         case SDL_KEYDOWN:
             switch (sdl->event.key.keysym.scancode) {
+            case SDL_SCANCODE_ESCAPE:
+                sdl->is_running = 0;
+                break;
             case SDL_SCANCODE_Z:
                 scene->mode = (scene->mode + 1) % CAMERA_MODE_COUNT;
                 fprintf(stderr, "CHANGE MODE to - %d\n", scene->mode);
                 break;
-
+                break;
             case SDL_SCANCODE_I:
                 scene->reverse_normal = (scene->reverse_normal + 1) % 2;
                 fprintf(stderr, "REVERSE NORMAL\n");
                 break;
+            case SDL_SCANCODE_1:
+                if (state[SDL_SCANCODE_LCTRL])scene->FOV -= 0.1;
+                else scene->FOV += 0.1;
+                break;
+            case SDL_SCANCODE_2:
+                if (state[SDL_SCANCODE_LCTRL])scene->ambient_light -= 0.1;
+                else scene->ambient_light += 0.1;
+                break;
+
             default: break;
             }
             break;
         }
     }
-    const Uint8* state = SDL_GetKeyboardState(NULL);
+
+    for (int i = 0; i < 9; i++) {
+        if (state[89 + i]) {
+            int ind = (2 - i / 3) * 3 + (i % 3);
+            if (state[SDL_SCANCODE_LCTRL])scene->shift_of_view[ind] -= 0.01;
+            else scene->shift_of_view[ind] += 0.01;
+        }
+    }
+
     if (state[SDL_SCANCODE_UP])     scene->camera_displacement.z -= scene->camera_speed;
     if (state[SDL_SCANCODE_DOWN])   scene->camera_displacement.z += scene->camera_speed;
     if (state[SDL_SCANCODE_LEFT])   scene->camera_displacement.x += scene->camera_speed;
@@ -243,7 +271,7 @@ void wireframe(SDL_data* sdl, Scene_data* scene) {
     }
     SDL_RenderPresent(sdl->renderer);
     // задержка
-    SDL_Delay(12);
+    //SDL_Delay(12);
 }
 
 void solid_without_light(SDL_data* sdl, Scene_data* scene) {
@@ -300,9 +328,8 @@ void solid_without_light(SDL_data* sdl, Scene_data* scene) {
     SDL_RenderCopy(sdl->renderer, sdl->texture, NULL, NULL);
     SDL_RenderPresent(sdl->renderer);
     // задержка
-    SDL_Delay(6);
+    //SDL_Delay(6);
 }
-
 
 void solid(SDL_data* sdl, Scene_data* scene) {
     for (int i = 0; i < SCREEN_WIDTH * SCREEN_HEIGHT; i++) {
@@ -424,8 +451,6 @@ int main(int argc, char* argv[]) {
         default:
             break;
         }
-
-
     }
 
     // Сохранение файла

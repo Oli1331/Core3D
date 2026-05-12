@@ -12,6 +12,8 @@ void cross_product(Vec* a, Vec* b, Vec* n);
 void normalize_vec(Vec* v);
 float dot_product(Vec* a, Vec* b);
 void build_mvp_matrix(float model[16], float view[16], float proj[16], float mvp[16]);
+void build_view_matrix(Scene_data* scene);
+
 
 
 #endif

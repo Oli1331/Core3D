@@ -85,6 +85,7 @@ typedef struct Scene_data_s {
     Uint32* pixels;
 
     float view_matrix[16];
+    float shift_of_view[9];
     float projection_matrix[16];
     float mvp_matrix[16];
     float mv_matrix[16];
@@ -99,8 +100,11 @@ typedef struct Scene_data_s {
     Vec camera_direction;
     float camera_speed;
     Camera_mode mode;
+    float camera_anglex;  
+    float camera_angley;  
 
     char reverse_normal;
+
 }Scene_data;
 
 
@@ -123,7 +127,6 @@ void free_vector_obj(Vector_obj* v);
 void init_mdl(Model* m); //###
 void free_mdl(Model* m);
 void build_mvp_matrix(float model[16], float view[16], float proj[16], float mvp[16]);
-void build_view_matrix(Scene_data* scene);
 void build_projection_matrix(float FOV, float ratio_screen, float z_near, float z_far, float proj_matrix[16]);
 void start_SDL(SDL_data* data);
 void start_scene(Scene_data* data);
