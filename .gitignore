@@ -2,6 +2,7 @@ models
 *.obj
 *.o
 *.mtl
+*.txt
 notes.md
 requirements.md
-Core3D
+Core3D*

@@ -5,6 +5,9 @@
 #include <math.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL.h>
+#ifndef TESTING
+#define TESTING 0
+#endif
 #define RGBA(R,G,B,A) ((R<<24)|(G<<16)|(B<<8)|(A))
 
 void print_text(SDL_data* sdl, char* text, int x, int y) {
@@ -431,6 +434,8 @@ int main(int argc, char* argv[]) {
     start_SDL(&data_sdl);
     Scene_data data_scene;
     start_scene(&data_scene);
+    if (TESTING)freopen("fps_loger.txt", "w", stdout);
+    int counter = 0;
     // float angle = 0; // crutch
 
 
@@ -451,21 +456,7 @@ int main(int argc, char* argv[]) {
         build_projection_matrix(data_scene.FOV, (float)SCREEN_WIDTH / SCREEN_HEIGHT, data_scene.z_near, data_scene.z_far, data_scene.projection_matrix);
         build_view_matrix(&data_scene);
 
-        // data_scene.shift_of_view[0 * 3 + 0] = cosf(angle);
-        // data_scene.shift_of_view[0 * 3 + 1] = -sinf(angle);
-        // data_scene.shift_of_view[1 * 3 + 0] = sinf(angle);
-        // data_scene.shift_of_view[1 * 3 + 1] = cosf(angle);
-        // data_scene.shift_of_view[1 * 3 + 1] = cosf(angle);
-        // data_scene.shift_of_view[1 * 3 + 2] = -sinf(angle);
-        // data_scene.shift_of_view[2 * 3 + 1] = sinf(angle);
-        // data_scene.shift_of_view[2 * 3 + 2] = cosf(angle);
-        // data_scene.shift_of_view[0 * 3 + 0] = cosf(angle);
-        // data_scene.shift_of_view[0 * 3 + 2] = sinf(angle);
-        // data_scene.shift_of_view[2 * 3 + 0] = -sinf(angle);
-        // data_scene.shift_of_view[2 * 3 + 2] = cosf(angle);
-        rotate_object_y(&(data_scene.objects.data[0]), 0.01f);
-        // rotate_object_x(&(data_scene.objects.data[0]), 0.01f);
-        // rotate_object_z(&(data_scene.objects.data[0]), 0.01f);
+        if (TESTING)rotate_object_y(&(data_scene.objects.data[0]), 0.01f);
 
         switch (data_scene.mode) {
         case WIREFRAME_MODE:
@@ -484,6 +475,18 @@ int main(int argc, char* argv[]) {
         int fps = (int)(1.f / ((float)(fps_time - before_fps_time) / SDL_GetPerformanceFrequency()));
         char fps_str[8];sprintf(fps_str, "%d", fps);
         print_text(&data_sdl, fps_str, 0, 0);
+
+
+        if (TESTING) {
+            printf("%s\n", fps_str);
+            counter++;
+            if (counter == 10) {
+                data_scene.mode = (data_scene.mode + 1) % CAMERA_MODE_COUNT;
+                counter = 0;
+                if (data_scene.mode == WIREFRAME_MODE)break;
+                printf("\n");
+            }
+        }
 
         SDL_RenderPresent(data_sdl.renderer);
 
