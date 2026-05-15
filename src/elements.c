@@ -1,5 +1,5 @@
 #include "elements.h"
-
+#include <SDL2/SDL_ttf.h>
 void init_mdl(Model* m) { //###
     init_vector_plgn(&(m->polygons));
     init_vector_vrtc(&(m->vertices));
@@ -46,6 +46,10 @@ void start_SDL(SDL_data* data) {
         SCREEN_HEIGHT                            // Высота (height)
     );
     data->is_running = 1;
+
+    TTF_Init();
+    data->font = TTF_OpenFont("font.ttf", 24);
+    if (data->font == NULL)fprintf(stderr, "Font not found.\n");
 }
 
 void start_scene(Scene_data* data) {
@@ -63,6 +67,10 @@ void start_scene(Scene_data* data) {
     }
     memset(data->projection_matrix, 0, 16 * sizeof(float));
     memset(data->shift_of_view, 0, 9 * sizeof(float));
+
+    data->start_position.x = 0;
+    data->start_position.y = -1;
+    data->start_position.z = 8;
 
     data->FOV = 70;
     data->z_near = 0.01, data->z_far = 10000;
@@ -101,8 +109,8 @@ void init_vector_mdl(Vector_mdl* v) {
     v->capacity = 1;v->cnt_models = 0;
     v->data = malloc(1 * sizeof(Model));
 
-    init_vector_plgn(&(v->data->polygons));
-    init_vector_vrtc(&(v->data->vertices));
+    // init_vector_plgn(&(v->data->polygons));
+    // init_vector_vrtc(&(v->data->vertices));
 }
 
 void init_vector_obj(Vector_obj* v) {
@@ -144,18 +152,18 @@ void vector_obj_push(Vector_obj* v, Object* obj) {
 }
 
 void provide_vector_vrtc(Vector_vrtc* v, int n) {
-    while (v->capacity < n) {
-        v->capacity *= 2;
+    if (v->capacity < n) {
+        v->capacity = n;
         v->data = realloc(v->data, v->capacity * sizeof(Vertice));
     }
 }
 
 void free_vector_vrtc(Vector_vrtc* v) {
-    free((v->data));
+    if (v->data)free((v->data));
 }
 
 void free_vector_plg(Vector_plgn* v) {
-    free(v->data);
+    if (v->data)free(v->data);
 }
 
 void free_vector_mdl(Vector_mdl* v) {
@@ -163,9 +171,9 @@ void free_vector_mdl(Vector_mdl* v) {
         free_vector_vrtc(&(v->data[m].vertices));
         free_vector_plg(&(v->data[m].polygons));
     }
-    free(v->data);
+    if (v->data)free(v->data);
 }
 
 void free_vector_obj(Vector_obj* v) {
-    free(v->data);
+    if (v->data)free(v->data);
 }

@@ -2,6 +2,8 @@
 #define ELEMENTS_H
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
+
 #define SIZE_NAME_MODEL 16
 #define MSX_LEN_LINE_IN_OBJ 50
 #define MAX_LEN_FILENAME 48
@@ -74,6 +76,8 @@ typedef struct SDL_data_s {
 
     SDL_Texture* texture;
 
+    TTF_Font* font;
+
     char is_running;
 }SDL_data;
 
@@ -98,6 +102,7 @@ typedef struct Scene_data_s {
 
     Vec camera_displacement;
     Vec camera_direction;
+    Vec start_position;
     float camera_speed;
     Camera_mode mode;
     float camera_anglex;  

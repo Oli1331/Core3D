@@ -1,10 +1,29 @@
-//#include <stdbool.h>
+// Если после создания объекта тсделать vector_mdl_push — срабатывает realloc, и object->model становится dangling pointer
 #include "elements.h"
 #include "easy_math.h"
 #include <stdio.h>
 #include <math.h>
+#include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL.h>
 #define RGBA(R,G,B,A) ((R<<24)|(G<<16)|(B<<8)|(A))
+
+void print_text(SDL_data* sdl, char* text, int x, int y) {
+    if (sdl->font == NULL)return;
+    SDL_Color color = { 255, 255, 255, 255 };
+    SDL_Surface* surface = TTF_RenderText_Blended(sdl->font, text, color);
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(sdl->renderer, surface);
+
+    SDL_Rect dest_rect;
+    dest_rect.x = x;
+    dest_rect.y = y;
+    dest_rect.w = surface->w;
+    dest_rect.h = surface->h;
+
+    SDL_RenderCopy(sdl->renderer, texture, NULL, &dest_rect);
+
+    SDL_FreeSurface(surface);
+    SDL_DestroyTexture(texture);
+}
 
 // parsing 
 int parsing_obj_file(char* namefile, Vector_mdl* models, Vector_obj* objects) {
@@ -59,13 +78,13 @@ int parsing_obj_file(char* namefile, Vector_mdl* models, Vector_obj* objects) {
 
     for (int m = 0; m < models->cnt_models; m++) {
         o.model = &(models->data[m]);
-        
+
         vector_obj_push(objects, &o);
     }
     fclose(in);
     fprintf(stderr, "FINISH PARSING.\nCOUNT of models : % d\n", models->cnt_models);
 
-        return 1;
+    return 1;
 }
 
 void save_output_file(int argc_main, char** argv_main, Vector_obj* objects, Vector_vrtc* global_render_bufer) {
@@ -244,6 +263,7 @@ void wireframe(SDL_data* sdl, Scene_data* scene) {
         for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
 
             int* v = mdl->polygons.data[p].v;
+            if (v[0] < 0 || v[1] < 0 || v[2] < 0)continue; // bug
             float w1 = scene->global_render_bufer.data[v[0]].w;
             float w2 = scene->global_render_bufer.data[v[1]].w;
             float w3 = scene->global_render_bufer.data[v[2]].w;
@@ -269,7 +289,6 @@ void wireframe(SDL_data* sdl, Scene_data* scene) {
         }
 
     }
-    SDL_RenderPresent(sdl->renderer);
     // задержка
     //SDL_Delay(12);
 }
@@ -292,6 +311,7 @@ void solid_without_light(SDL_data* sdl, Scene_data* scene) {
         for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
 
             int* v = mdl->polygons.data[p].v;
+            if (v[0] < 0 || v[1] < 0 || v[2] < 0)continue; // bug
             float w1 = scene->global_render_bufer.data[v[0]].w;
             float w2 = scene->global_render_bufer.data[v[1]].w;
             float w3 = scene->global_render_bufer.data[v[2]].w;
@@ -326,7 +346,6 @@ void solid_without_light(SDL_data* sdl, Scene_data* scene) {
     }
     SDL_UpdateTexture(sdl->texture, NULL, scene->pixels, SCREEN_WIDTH * sizeof(Uint32));
     SDL_RenderCopy(sdl->renderer, sdl->texture, NULL, NULL);
-    SDL_RenderPresent(sdl->renderer);
     // задержка
     //SDL_Delay(6);
 }
@@ -351,6 +370,7 @@ void solid(SDL_data* sdl, Scene_data* scene) {
 
         for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
             int* plgs_vertices = mdl->polygons.data[p].v;
+            if (plgs_vertices[0] < 0 || plgs_vertices[1] < 0 || plgs_vertices[2] < 0)continue; // bug
 
             Vec a, b, n;
             make_vec(&(vertices_mdl[plgs_vertices[0]]), &(vertices_mdl[plgs_vertices[1]]), &a);
@@ -404,7 +424,6 @@ void solid(SDL_data* sdl, Scene_data* scene) {
 
     SDL_UpdateTexture(sdl->texture, NULL, scene->pixels, SCREEN_WIDTH * sizeof(Uint32));
     SDL_RenderCopy(sdl->renderer, sdl->texture, NULL, NULL);
-    SDL_RenderPresent(sdl->renderer);
     // задержка
     //SDL_Delay(6);
 }
@@ -423,19 +442,33 @@ int main(int argc, char* argv[]) {
         }
     }
 
-
+    int cnt_frame = 0;
+    int sum_frame = 0;
+    char fps_str[32] = "0";
+    
     fprintf(stderr, "START MAIN LOOP\n");
     while (data_sdl.is_running) {
+        cnt_frame++;
+        Uint64 start_time = SDL_GetPerformanceCounter();
+
         event_handling(&data_sdl, &data_scene);
 
 
         build_projection_matrix(data_scene.FOV, (float)SCREEN_WIDTH / SCREEN_HEIGHT, data_scene.z_near, data_scene.z_far, data_scene.projection_matrix);
         build_view_matrix(&data_scene);
 
-        data_scene.objects.data[0].transforms[0 * 4 + 0] = cosf(angle);
-        data_scene.objects.data[0].transforms[0 * 4 + 1] = -sinf(angle);
-        data_scene.objects.data[0].transforms[1 * 4 + 0] = sinf(angle);
-        data_scene.objects.data[0].transforms[1 * 4 + 1] = cosf(angle);
+        // data_scene.shift_of_view[0 * 3 + 0] = cosf(angle);
+        // data_scene.shift_of_view[0 * 3 + 1] = -sinf(angle);
+        // data_scene.shift_of_view[1 * 3 + 0] = sinf(angle);
+        // data_scene.shift_of_view[1 * 3 + 1] = cosf(angle);
+        // data_scene.shift_of_view[1 * 3 + 1] = cosf(angle);
+        // data_scene.shift_of_view[1 * 3 + 2] = -sinf(angle);
+        // data_scene.shift_of_view[2 * 3 + 1] = sinf(angle);
+        // data_scene.shift_of_view[2 * 3 + 2] = cosf(angle);
+        data_scene.shift_of_view[0 * 3 + 0] = cosf(angle);
+        data_scene.shift_of_view[0 * 3 + 2] = sinf(angle);
+        data_scene.shift_of_view[2 * 3 + 0] = -sinf(angle);
+        data_scene.shift_of_view[2 * 3 + 2] = cosf(angle);
         angle += 0.01;
 
         switch (data_scene.mode) {
@@ -451,6 +484,20 @@ int main(int argc, char* argv[]) {
         default:
             break;
         }
+
+        Uint64 end_time = SDL_GetPerformanceCounter();
+        int fps = (int)(1.f / ((float)(end_time - start_time) / SDL_GetPerformanceFrequency()));
+        sum_frame += fps;
+        if (cnt_frame == 10) {
+            sum_frame /= 10;
+            snprintf(fps_str, 32, "%d", sum_frame);
+            sum_frame = cnt_frame = 0;
+            // fprintf(stderr, "%f\n", fps);
+        }
+        print_text(&data_sdl, fps_str, 0, 0);
+
+        SDL_RenderPresent(data_sdl.renderer);
+
     }
 
     // Сохранение файла
@@ -462,6 +509,8 @@ int main(int argc, char* argv[]) {
     SDL_DestroyTexture(data_sdl.texture);
     SDL_DestroyRenderer(data_sdl.renderer);
     SDL_DestroyWindow(data_sdl.window);
+    TTF_CloseFont(data_sdl.font);
+    TTF_Quit();
     SDL_Quit();
     free_vector_vrtc(&data_scene.global_render_bufer);
     free_vector_mdl(&data_scene.models);
