@@ -69,8 +69,8 @@ void start_scene(Scene_data* data) {
     memset(data->shift_of_view, 0, 9 * sizeof(float));
 
     data->start_position.x = 0;
-    data->start_position.y = -1;
-    data->start_position.z = 8;
+    data->start_position.y = -2;
+    data->start_position.z = 10;
 
     data->FOV = 70;
     data->z_near = 0.01, data->z_far = 10000;

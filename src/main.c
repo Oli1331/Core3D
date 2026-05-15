@@ -213,8 +213,8 @@ void event_handling(SDL_data* sdl, Scene_data* scene) {
                 fprintf(stderr, "REVERSE NORMAL\n");
                 break;
             case SDL_SCANCODE_1:
-                if (state[SDL_SCANCODE_LCTRL])scene->FOV -= 0.1;
-                else scene->FOV += 0.1;
+                if (state[SDL_SCANCODE_LCTRL])scene->FOV += 0.1;
+                else scene->FOV -= 0.1;
                 break;
             case SDL_SCANCODE_2:
                 if (state[SDL_SCANCODE_LCTRL])scene->ambient_light -= 0.1;
@@ -263,7 +263,7 @@ void wireframe(SDL_data* sdl, Scene_data* scene) {
         for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
 
             int* v = mdl->polygons.data[p].v;
-            if (v[0] < 0 || v[1] < 0 || v[2] < 0)continue; // bug
+            //if (v[0] < 0 || v[1] < 0 || v[2] < 0)continue; // bug
             float w1 = scene->global_render_bufer.data[v[0]].w;
             float w2 = scene->global_render_bufer.data[v[1]].w;
             float w3 = scene->global_render_bufer.data[v[2]].w;
@@ -280,7 +280,7 @@ void wireframe(SDL_data* sdl, Scene_data* scene) {
 
             float normal = edge_function(x1, y1, x2, y2, x3, y3); //векторное произведение ребер грани
             if (scene->reverse_normal)normal *= -1;
-            if (normal > 0)continue;
+            if (normal > 0)continue;//Back-face culling   
 
             SDL_RenderDrawLine(sdl->renderer, (int)x1, (int)y1, (int)x2, (int)y2);
             SDL_RenderDrawLine(sdl->renderer, (int)x2, (int)y2, (int)x3, (int)y3);
@@ -289,8 +289,6 @@ void wireframe(SDL_data* sdl, Scene_data* scene) {
         }
 
     }
-    // задержка
-    //SDL_Delay(12);
 }
 
 void solid_without_light(SDL_data* sdl, Scene_data* scene) {
@@ -311,7 +309,7 @@ void solid_without_light(SDL_data* sdl, Scene_data* scene) {
         for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
 
             int* v = mdl->polygons.data[p].v;
-            if (v[0] < 0 || v[1] < 0 || v[2] < 0)continue; // bug
+            //if (v[0] < 0 || v[1] < 0 || v[2] < 0)continue; // bug
             float w1 = scene->global_render_bufer.data[v[0]].w;
             float w2 = scene->global_render_bufer.data[v[1]].w;
             float w3 = scene->global_render_bufer.data[v[2]].w;
@@ -328,7 +326,7 @@ void solid_without_light(SDL_data* sdl, Scene_data* scene) {
 
             float normal = edge_function(x1, y1, x2, y2, x3, y3); //векторное произведение ребер грани
             if (scene->reverse_normal)normal *= -1;
-            if (normal > 0)continue;
+            if (normal > 0)continue;//Back-face culling   
 
             float z1 = scene->global_render_bufer.data[v[0]].z / w1;
             float z2 = scene->global_render_bufer.data[v[1]].z / w2;
@@ -346,8 +344,7 @@ void solid_without_light(SDL_data* sdl, Scene_data* scene) {
     }
     SDL_UpdateTexture(sdl->texture, NULL, scene->pixels, SCREEN_WIDTH * sizeof(Uint32));
     SDL_RenderCopy(sdl->renderer, sdl->texture, NULL, NULL);
-    // задержка
-    //SDL_Delay(6);
+
 }
 
 void solid(SDL_data* sdl, Scene_data* scene) {
@@ -370,12 +367,13 @@ void solid(SDL_data* sdl, Scene_data* scene) {
 
         for (int p = 0; p < mdl->polygons.cnt_polygon; p++) {
             int* plgs_vertices = mdl->polygons.data[p].v;
-            if (plgs_vertices[0] < 0 || plgs_vertices[1] < 0 || plgs_vertices[2] < 0)continue; // bug
+            //if (plgs_vertices[0] < 0 || plgs_vertices[1] < 0 || plgs_vertices[2] < 0)continue; // bug
 
             Vec a, b, n;
             make_vec(&(vertices_mdl[plgs_vertices[0]]), &(vertices_mdl[plgs_vertices[1]]), &a);
             make_vec(&(vertices_mdl[plgs_vertices[0]]), &(vertices_mdl[plgs_vertices[2]]), &b);
             cross_product(&a, &b, &n);
+            if (dot_product(&(scene->camera_direction), &n) < 0)continue;
 
             normalize_vec(&n);
             if (scene->reverse_normal) {
@@ -433,7 +431,7 @@ int main(int argc, char* argv[]) {
     start_SDL(&data_sdl);
     Scene_data data_scene;
     start_scene(&data_scene);
-    float angle = 0; // crutch
+    // float angle = 0; // crutch
 
 
     if (argc > 1) {
@@ -442,14 +440,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    int cnt_frame = 0;
-    int sum_frame = 0;
-    char fps_str[32] = "0";
-    
+
     fprintf(stderr, "START MAIN LOOP\n");
+    Uint64 fps_time = 1, before_fps_time = 0;
     while (data_sdl.is_running) {
-        cnt_frame++;
-        Uint64 start_time = SDL_GetPerformanceCounter();
 
         event_handling(&data_sdl, &data_scene);
 
@@ -465,11 +459,13 @@ int main(int argc, char* argv[]) {
         // data_scene.shift_of_view[1 * 3 + 2] = -sinf(angle);
         // data_scene.shift_of_view[2 * 3 + 1] = sinf(angle);
         // data_scene.shift_of_view[2 * 3 + 2] = cosf(angle);
-        data_scene.shift_of_view[0 * 3 + 0] = cosf(angle);
-        data_scene.shift_of_view[0 * 3 + 2] = sinf(angle);
-        data_scene.shift_of_view[2 * 3 + 0] = -sinf(angle);
-        data_scene.shift_of_view[2 * 3 + 2] = cosf(angle);
-        angle += 0.01;
+        // data_scene.shift_of_view[0 * 3 + 0] = cosf(angle);
+        // data_scene.shift_of_view[0 * 3 + 2] = sinf(angle);
+        // data_scene.shift_of_view[2 * 3 + 0] = -sinf(angle);
+        // data_scene.shift_of_view[2 * 3 + 2] = cosf(angle);
+        rotate_object_y(&(data_scene.objects.data[0]), 0.01f);
+        // rotate_object_x(&(data_scene.objects.data[0]), 0.01f);
+        // rotate_object_z(&(data_scene.objects.data[0]), 0.01f);
 
         switch (data_scene.mode) {
         case WIREFRAME_MODE:
@@ -484,20 +480,14 @@ int main(int argc, char* argv[]) {
         default:
             break;
         }
-
-        Uint64 end_time = SDL_GetPerformanceCounter();
-        int fps = (int)(1.f / ((float)(end_time - start_time) / SDL_GetPerformanceFrequency()));
-        sum_frame += fps;
-        if (cnt_frame == 10) {
-            sum_frame /= 10;
-            snprintf(fps_str, 32, "%d", sum_frame);
-            sum_frame = cnt_frame = 0;
-            // fprintf(stderr, "%f\n", fps);
-        }
+        fps_time = SDL_GetPerformanceCounter();
+        int fps = (int)(1.f / ((float)(fps_time - before_fps_time) / SDL_GetPerformanceFrequency()));
+        char fps_str[8];sprintf(fps_str, "%d", fps);
         print_text(&data_sdl, fps_str, 0, 0);
 
         SDL_RenderPresent(data_sdl.renderer);
 
+        before_fps_time = fps_time;
     }
 
     // Сохранение файла

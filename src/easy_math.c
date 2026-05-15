@@ -55,12 +55,12 @@ void build_mvp_matrix(float model[16], float view[16], float proj[16], float mvp
 
 void build_view_matrix(Scene_data* scene) {
     const Vec Vec_Up = { 0, 1, 0 };
-    Vec D;
-    D.x = cosf(scene->camera_angley) * sinf(scene->camera_anglex);
-    D.y = sinf(scene->camera_angley);
-    D.z = cosf(scene->camera_angley) * cosf(scene->camera_anglex);
-    Vec R; cross_product(&Vec_Up, &D, &R);
-    Vec U; cross_product(&D, &R, &U);
+   
+    scene->camera_direction.x = cosf(scene->camera_angley) * sinf(scene->camera_anglex);
+    scene->camera_direction.y = sinf(scene->camera_angley);
+    scene->camera_direction.z = cosf(scene->camera_angley) * cosf(scene->camera_anglex);
+    Vec R; cross_product(&Vec_Up, &scene->camera_direction, &R);
+    Vec U; cross_product(&scene->camera_direction, &R, &U);
 
     scene->view_matrix[0 * 4 + 0] = R.x + scene->shift_of_view[0 * 3 + 0];
     scene->view_matrix[0 * 4 + 1] = R.y + scene->shift_of_view[0 * 3 + 1];
@@ -70,16 +70,74 @@ void build_view_matrix(Scene_data* scene) {
     scene->view_matrix[1 * 4 + 1] = U.y + scene->shift_of_view[1 * 3 + 1];
     scene->view_matrix[1 * 4 + 2] = U.z + scene->shift_of_view[1 * 3 + 2];
 
-    scene->view_matrix[2 * 4 + 0] = D.x + scene->shift_of_view[2 * 3 + 0];
-    scene->view_matrix[2 * 4 + 1] = D.y + scene->shift_of_view[2 * 3 + 1];
-    scene->view_matrix[2 * 4 + 2] = D.z + scene->shift_of_view[2 * 3 + 2];
+    scene->view_matrix[2 * 4 + 0] = scene->camera_direction.x + scene->shift_of_view[2 * 3 + 0];
+    scene->view_matrix[2 * 4 + 1] = scene->camera_direction.y + scene->shift_of_view[2 * 3 + 1];
+    scene->view_matrix[2 * 4 + 2] = scene->camera_direction.z + scene->shift_of_view[2 * 3 + 2];
 
-    scene->view_matrix[0 * 4 + 3] = dot_product(&(scene->camera_displacement), &R)+scene->start_position.x;
-    scene->view_matrix[1 * 4 + 3] = dot_product(&(scene->camera_displacement), &U)+scene->start_position.y;
-    scene->view_matrix[2 * 4 + 3] = dot_product(&(scene->camera_displacement), &D)+scene->start_position.z;
+    scene->view_matrix[0 * 4 + 3] = dot_product(&(scene->camera_displacement), &R) + scene->start_position.x;
+    scene->view_matrix[1 * 4 + 3] = dot_product(&(scene->camera_displacement), &U) + scene->start_position.y;
+    scene->view_matrix[2 * 4 + 3] = dot_product(&(scene->camera_displacement), &scene->camera_direction) + scene->start_position.z;
 
     // scene->view_matrix[15] = 1.0f;
     // scene->view_matrix[3] = 0.f;
     // scene->view_matrix[7] = 0.f;
     // scene->view_matrix[11] = 0.f;
+}
+
+void rotate_object_x(Object* obj, float angle) {
+    float rotate_matrix[16] =
+    { 1,0,0,0,
+    0, cosf(angle),-sinf(angle),0,
+    0, sinf(angle), cosf(angle),0,
+    0,0,0,1 };
+    float buf[16];
+    multiply_matrix_4x4(rotate_matrix, (obj->transforms), buf);
+    memcpy(obj->transforms, buf, 16 * (sizeof(float)));
+}
+
+void rotate_object_y(Object* obj, float angle) {
+    float rotate_matrix[16] =
+    { cosf(angle),0,sinf(angle),0,
+    0,1,0,0,
+    -sinf(angle),0, cosf(angle),0,
+    0,0,0,1 };
+    float buf[16];
+    multiply_matrix_4x4(rotate_matrix, (obj->transforms), buf);
+
+    memcpy(obj->transforms, buf, 16 * (sizeof(float)));
+}
+
+void rotate_object_z(Object* obj, float angle) {
+    float rotate_matrix[16] =
+    { cosf(angle),-sinf(angle),0,0,
+      sinf(angle), cosf(angle),0,0,
+      0,0,1,0,
+      0,0,0,1 };
+    float buf[16];
+    multiply_matrix_4x4(rotate_matrix, (obj->transforms), buf);
+    memcpy(obj->transforms, buf, 16 * (sizeof(float)));
+}
+
+void rotate_object_YXZ(Object* obj, float anglex, float angley, float anglez) {
+    float rotate_x_matrix[16] =
+    { 1,0,0,0,
+    0, cosf(anglex),-sinf(anglex),0,
+    0, sinf(anglex), cosf(anglex),0,
+    0,0,0,1 };
+    float rotate_y_matrix[16] =
+    { cosf(angley),0,sinf(angley),0,
+    0,1,0,0,
+    -sinf(angley),0, cosf(angley),0,
+    0,0,0,1 };
+    float rotate_z_matrix[16] =
+    { cosf(anglez),-sinf(anglez),0,0,
+      sinf(anglez), cosf(anglez),0,0,
+      0,0,1,0,
+      0,0,0,1 };
+    float buf1[16];
+    float buf2[16];
+    multiply_matrix_4x4(rotate_z_matrix, rotate_y_matrix, buf1);
+    multiply_matrix_4x4(buf1, rotate_x_matrix, buf2);
+    multiply_matrix_4x4(buf2, (obj->transforms), buf1);
+    memcpy(obj->transforms, buf1, 16 * (sizeof(float)));
 }
